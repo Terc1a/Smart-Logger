@@ -11,6 +11,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ANALYZE_ENGINE_DIR = os.path.join(BASE_DIR, 'analyze_engine')
 ANALYZE_SCRIPT = 'main.py'
 
+# --- Конфигурация запуска ---
+DJANGO_SERVER_ADDR = "127.0.0.1:8000"  # Адрес и порт для Django-сервера
+
 DASHBOARD_DIR = os.path.join(ANALYZE_ENGINE_DIR, 'dashboard')
 DJANGO_SCRIPT = 'manage.py'
 
@@ -36,9 +39,9 @@ def main():
         processes.append(analyzer_process)
 
         # Запускаем Django-сервер
-        print(f"Запуск Django-дашборда: {DJANGO_SCRIPT} в {DASHBOARD_DIR}")
+        print(f"Запуск Django-дашборда на http://{DJANGO_SERVER_ADDR}")
         django_process = subprocess.Popen(
-            [python_executable, DJANGO_SCRIPT, 'runserver'],
+            [python_executable, DJANGO_SCRIPT, 'runserver', DJANGO_SERVER_ADDR],
             cwd=DASHBOARD_DIR
         )
         processes.append(django_process)
