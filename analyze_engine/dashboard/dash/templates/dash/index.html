@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Анализ настроения</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #121212;
+            color: #e0e0e0;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+        }
+        .container {
+            width: 100%;
+            max-width: 1200px; /* Увеличиваем максимальную ширину для трех колонок */
+            display: flex;
+            gap: 20px;
+        }
+        .column {
+            flex: 1; /* Колонки занимают равное пространство */
+            background-color: #1e1e1e;
+            border-radius: 8px;
+            padding: 20px 30px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        }
+        h1 {
+            color: #bb86fc;
+            text-align: center;
+            border-bottom: 1px solid #333;
+            padding-bottom: 15px;
+            margin-top: 0;
+        }
+        ul {
+            list-style-type: none;
+            padding: 0;
+        }
+        li {
+            background-color: #2c2c2c;
+            margin-bottom: 10px;
+            padding: 15px;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 1.1em;
+            transition: background-color 0.2s;
+        }
+        li:hover {
+            background-color: #3a3a3a;
+        }
+        .word-cloud {
+            padding: 15px;
+            text-align: center;
+        }
+        .word-cloud span {
+            margin: 5px;
+            display: inline-block;
+            color: #e0e0e0;
+            transition: color 0.2s;
+        }
+        .histogram-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+            font-family: 'Courier New', Courier, monospace; /* Моноширинный шрифт для гистограммы */
+            font-size: 1em;
+        }
+        .histogram-label {
+            flex: 0 0 120px; /* Фиксированная ширина для слова */
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-right: 10px;
+        }
+        .histogram-bar-container {
+            flex-grow: 1; /* Контейнер для полоски занимает все оставшееся место */
+            background-color: #3a3a3a;
+            border-radius: 4px;
+            height: 1.2em;
+            overflow: hidden;
+        }
+        .histogram-bar-fill {
+            background-color: #bb86fc;
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.5s ease-in-out; /* Плавная анимация при загрузке */
+            text-align: right;
+            color: #121212;
+            font-size: 0.8em;
+            line-height: 1.2em;
+            padding-right: 5px;
+            box-sizing: border-box;
+        }
+        .histogram-count {
+            margin-left: 10px;
+            color: #888;
+        }
+        .state {
+            font-weight: bold;
+        }
+        .timestamp {
+            font-size: 0.8em;
+            color: #888;
+        }
+        .no-data {
+            text-align: center;
+            color: #888;
+            margin-top: 20px;
+        }
+
+        /* --- Адаптивность для мобильных устройств --- */
+        @media (max-width: 1024px) {
+            .container {
+                flex-direction: column; /* Ставим колонки друг под другом */
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Левая колонка: Состояния -->
+        <div class="column">
+            <h1>Последние состояния</h1>
+            <ul>
+                {% if emotes %}
+                    {% for state, timestamp in emotes %}
+                        <li>
+                            <span class="state">
+                                {% if state == "Хорошее" %}😊 Хорошее
+                                {% elif state == "Грустное" %}😢 Грустное
+                                {% elif state == "Смешанное" %}🤔 Смешанное
+                                {% elif state == "Злость" %}😠 Злость
+                                {% elif state == "Обида" %}😞 Обида
+                                {% else %}{{ state }}{% endif %}
+                            </span>
+                            <span class="timestamp">{{ timestamp|date:"d.m.Y H:i" }}</span>
+                        </li>
+                    {% endfor %}
+                {% else %}
+                    <p class="no-data">Нет данных для отображения.</p>
+                {% endif %}
+            </ul>
+        </div>
+
+        <!-- Правая колонка: Популярные слова -->
+        <div class="column">
+            <h1>Популярные слова</h1>
+            <div class="word-cloud">
+                {% for word, count in most_usage %}
+                    <span style="font-size: calc(1em + {{ count }} * 0.15em); opacity: calc(0.5 + {{ count }} * 0.05);">{{ word }}</span>
+                {% empty %}
+                    <p class="no-data">Нет популярных слов.</p>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Третья колонка: Гистограмма -->
+        <div class="column">
+            <h1>Частота слов</h1>
+            {% for item in histogram_data %}
+                <div class="histogram-row">
+                    <span class="histogram-label" title="{{ item.word }}">{{ item.word }}</span>
+                    <div class="histogram-bar-container">
+                        <div class="histogram-bar-fill" style="width: {{ item.bar_width_percent }}%;">
+                            {% if item.bar_width_percent > 15 %}{{ item.count }}{% endif %}
+                        </div>
+                    </div>
+                </div>
+            {% empty %}
+                <p class="no-data">Нет данных для гистограммы.</p>
+            {% endfor %}
+        </div>
+    </div>
+</body>
+</html>
