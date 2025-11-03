@@ -29,3 +29,10 @@ add_custom_command(TARGET keylogger POST_BUILD
     "${MYSQL_SERVER_PATH}/bin/libssl-3-x64.dll"
     $<TARGET_FILE_DIR:keylogger>
 )
+
+# 6. Копируем конфигурационный файл в папку со сборкой
+add_custom_command(TARGET keylogger POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${CMAKE_SOURCE_DIR}/config.ini"
+    $<TARGET_FILE_DIR:keylogger>
+)

