@@ -35,6 +35,6 @@ def index(request):
     finally:
         if connection and connection.is_connected():
             connection.close()
-
-        context = {"emotes": emotes, "most_usage": most_usage, "histogram_data": histogram_data}
+    
+    context = {"emotes": emotes, "most_usage": most_usage, "histogram_data": histogram_data}
     return render(request, "dash/index.html", context)
