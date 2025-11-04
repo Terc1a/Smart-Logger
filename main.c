@@ -103,6 +103,13 @@ void send_word_to_db() {
         return;
     }
 
+    // --- Проверка и переподключение к БД ---
+    // mysql_ping проверяет, живо ли соединение. Если нет, пытается переподключиться.
+    if (mysql_ping(g_conn) != 0) {
+        fputs_encrypted("mysql_ping() failed. Connection lost and could not be re-established.\n", g_log);
+        return; // Если переподключиться не удалось, выходим
+    }
+
     g_word_buffer[g_word_buffer_index] = '\0'; // Завершаем строку в буффере
 
     // Используем шаблон запроса из конфига
